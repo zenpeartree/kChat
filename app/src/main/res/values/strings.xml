@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">kChat</string>
+    <string name="extension_name">kChat</string>
+    <string name="live_chat_title">Twitch Chat</string>
+    <string name="live_chat_description">Scrollable live Twitch chat for a profile page.</string>
+    <string name="setup_title">Karoo Twitch chat setup</string>
+    <string name="setup_help">Create a Twitch app as a public client, save the client ID, then start the Twitch device login and approve it from another device.</string>
+    <string name="client_id_label">Twitch client ID</string>
+    <string name="client_id_hint">Paste your Twitch app client ID</string>
+    <string name="channel_label">Channel login</string>
+    <string name="channel_hint">Leave blank to use the authenticated account</string>
+    <string name="device_code_hint">No redirect URI is needed here. Start login, then open the activation URL on your phone or computer and enter the code shown below.</string>
+    <string name="action_save_settings">Save settings</string>
+    <string name="action_connect_twitch">Connect Twitch</string>
+    <string name="action_reconnect_twitch">Reconnect Twitch</string>
+    <string name="action_open_activation">Open activation page</string>
+    <string name="action_sign_out">Sign out</string>
+    <string name="status_missing_client_id">Save a Twitch client ID first.</string>
+    <string name="status_auth_failed">Twitch login failed.</string>
+    <string name="status_waiting_approval">Waiting for Twitch approval...</string>
+    <string name="status_device_login_complete">Twitch login complete. Connecting chat...</string>
+    <string name="account_format">Connected account: %1$s</string>
+    <string name="account_connected">Twitch account connected.</string>
+    <string name="account_disconnected">Twitch account not connected.</string>
+    <string name="message_count_format">Buffered messages: %1$d</string>
+    <string name="empty_chat_messages">No chat messages yet. Open the app if you still need to configure Twitch.</string>
+    <string name="open_app_button">Open app</string>
+    <string name="activation_title">Approve this device</string>
+    <string name="activation_code_format">Code: %1$s</string>
+    <string name="activation_url_format">Activation URL: %1$s</string>
+</resources>

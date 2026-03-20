@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExtensionInfo
+    displayName="@string/extension_name"
+    icon="@drawable/ic_chat"
+    id="kchat">
+    <DataType
+        description="@string/live_chat_description"
+        displayName="@string/live_chat_title"
+        graphical="true"
+        icon="@drawable/ic_chat"
+        typeId="live-chat" />
+</ExtensionInfo>
