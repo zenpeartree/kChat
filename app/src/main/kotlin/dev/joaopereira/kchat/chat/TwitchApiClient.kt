@@ -24,6 +24,21 @@ class TwitchApiClient(
             .firstOrNull() ?: throw IOException("No Twitch channel found for '$login'")
     }
 
+    suspend fun getLiveViewerCount(clientId: String, accessToken: String, channelLogin: String): Int {
+        val responseBody = execute(
+            Request.Builder()
+                .url("$HELIX_BASE/streams?user_login=$channelLogin")
+                .header("Authorization", "Bearer $accessToken")
+                .header("Client-Id", clientId)
+                .build(),
+        )
+        return json.decodeFromString<TwitchStreamsResponse>(responseBody)
+            .data
+            .firstOrNull()
+            ?.viewerCount
+            ?: 0
+    }
+
     suspend fun createChatSubscription(
         clientId: String,
         accessToken: String,

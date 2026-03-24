@@ -9,4 +9,16 @@
         graphical="true"
         icon="@drawable/ic_chat"
         typeId="live-chat" />
+    <DataType
+        description="@string/unread_messages_description"
+        displayName="@string/unread_messages_title"
+        graphical="false"
+        icon="@drawable/ic_chat"
+        typeId="unread-messages" />
+    <DataType
+        description="@string/viewer_count_description"
+        displayName="@string/viewer_count_title"
+        graphical="false"
+        icon="@drawable/ic_chat"
+        typeId="viewer-count" />
 </ExtensionInfo>

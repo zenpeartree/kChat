@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -26,17 +27,23 @@ class ChatPageDataType(
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         val openSetup = PendingIntents.openSetup(context)
 
-        container.chatRepository.acquireView()
+        container.chatRepository.acquireView(config.preview)
+        container.chatRepository.acquireViewerStream()
         emitter.onNext(UpdateGraphicConfig(showHeader = false))
         emitter.onNext(ShowCustomStreamState(null, null))
 
         scope.launch {
-            container.chatRepository.uiState.collect { state ->
+            container.chatRepository.uiState
+                .combine(container.chatRepository.viewerCountFlow) { state, viewerCount ->
+                    state to viewerCount
+                }
+                .collect { (state, viewerCount) ->
                 Timber.d(
-                    "kChat view update preview=%s state=%s messages=%d",
+                    "kChat view update preview=%s state=%s messages=%d viewers=%d",
                     config.preview,
                     state.connectionState,
                     state.messages.size,
+                    viewerCount,
                 )
                 val visibleMessages = state.messages
                     .take(8)
@@ -47,7 +54,14 @@ class ChatPageDataType(
                         R.id.chat_title,
                         state.channelLogin?.let { "#$it" } ?: context.getString(R.string.live_chat_title),
                     )
-                    setTextViewText(R.id.chat_status, "")
+                    setTextViewText(
+                        R.id.chat_status,
+                        if (viewerCount > 0) {
+                            context.getString(R.string.chat_viewers_format, viewerCount)
+                        } else {
+                            context.getString(R.string.chat_viewers_offline)
+                        },
+                    )
                     setTextViewText(R.id.chat_messages_text, visibleMessages)
                     setOnClickPendingIntent(R.id.chat_header, openSetup)
                     setOnClickPendingIntent(R.id.open_app_button, openSetup)
@@ -58,7 +72,8 @@ class ChatPageDataType(
 
         emitter.setCancellable {
             scope.cancel()
-            container.chatRepository.releaseView()
+            container.chatRepository.releaseView(config.preview)
+            container.chatRepository.releaseViewerStream()
         }
     }
 }

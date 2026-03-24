@@ -25,6 +25,7 @@ data class ChatUiState(
     val status: String,
     val authenticatedUser: String? = null,
     val channelLogin: String? = null,
+    val unreadCount: Int = 0,
     val messages: List<TwitchChatMessage> = emptyList(),
     val sequence: Long = 0,
 )
@@ -45,6 +46,17 @@ data class CachedMessage(
 @Serializable
 data class TwitchUsersResponse(
     val data: List<TwitchUser>,
+)
+
+@Serializable
+data class TwitchStreamsResponse(
+    val data: List<TwitchStream>,
+)
+
+@Serializable
+data class TwitchStream(
+    @SerialName("viewer_count")
+    val viewerCount: Int,
 )
 
 @Serializable

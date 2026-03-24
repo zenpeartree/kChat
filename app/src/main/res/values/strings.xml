@@ -4,6 +4,10 @@
     <string name="extension_name">kChat</string>
     <string name="live_chat_title">Twitch Chat</string>
     <string name="live_chat_description">Scrollable live Twitch chat for a profile page.</string>
+    <string name="unread_messages_title">Unread Chat</string>
+    <string name="unread_messages_description">Unread Twitch chat messages since the chat page was last opened.</string>
+    <string name="viewer_count_title">Live Viewers</string>
+    <string name="viewer_count_description">Current live viewer count for the configured Twitch channel.</string>
     <string name="setup_title">Karoo Twitch chat setup</string>
     <string name="setup_help">Create a Twitch app as a public client, save the client ID, then start the Twitch device login and approve it from another device.</string>
     <string name="client_id_label">Twitch client ID</string>
@@ -25,6 +29,8 @@
     <string name="account_disconnected">Twitch account not connected.</string>
     <string name="message_count_format">Buffered messages: %1$d</string>
     <string name="empty_chat_messages">No chat messages yet. Open the app if you still need to configure Twitch.</string>
+    <string name="chat_viewers_format">%1$d watching</string>
+    <string name="chat_viewers_offline">Offline</string>
     <string name="open_app_button">Open app</string>
     <string name="activation_title">Approve this device</string>
     <string name="activation_code_format">Code: %1$s</string>

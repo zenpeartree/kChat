@@ -33,18 +33,25 @@ class TwitchChatRepository(
         .build()
     private val bufferLock = Any()
     private val messages = ArrayDeque<TwitchChatMessage>(MAX_MESSAGES)
+    private val unreadCountState = MutableStateFlow(loadUnreadCount())
+    private val viewerCountState = MutableStateFlow(0)
     private val state = MutableStateFlow(
         ChatUiState(
             connectionState = ChatConnectionState.INACTIVE,
             status = "Open the app to finish Twitch setup",
+            unreadCount = loadUnreadCount(),
             messages = loadCachedMessages(),
         ),
     )
 
     private var activeViewCount = 0
+    private var activeRideChatViewCount = 0
+    private var activeUnreadStreamCount = 0
+    private var activeViewerStreamCount = 0
     private var currentSocket: TwitchEventSubClient? = null
     private var connectionJob: Job? = null
     private var publishJob: Job? = null
+    private var viewerPollJob: Job? = null
     private var reconnectAttempts = 0
     private var latestAuthenticatedUser: String? = null
     private var latestChannelLogin: String? = null
@@ -52,29 +59,110 @@ class TwitchChatRepository(
     private var lastPublishedAtMillis = 0L
 
     val uiState: StateFlow<ChatUiState> = state.asStateFlow()
+    val unreadCountFlow: StateFlow<Int> = unreadCountState.asStateFlow()
+    val viewerCountFlow: StateFlow<Int> = viewerCountState.asStateFlow()
 
     init {
         loadCachedMessages().forEach(messages::addLast)
         refreshPrerequisiteState()
     }
 
-    fun acquireView() {
+    fun acquireView(preview: Boolean) {
         activeViewCount += 1
-        Timber.d("kChat acquireView count=%d", activeViewCount)
-        if (activeViewCount == 1) {
+        if (!preview) {
+            activeRideChatViewCount += 1
+            resetUnreadCount()
+        }
+        Timber.d(
+            "kChat acquireView count=%d ride=%d preview=%s total=%d",
+            activeViewCount,
+            activeRideChatViewCount,
+            preview,
+            activeSubscriberCount(),
+        )
+        if (activeSubscriberCount() == 1) {
             reconnectNow()
         }
     }
 
-    fun releaseView() {
+    fun releaseView(preview: Boolean) {
         activeViewCount = (activeViewCount - 1).coerceAtLeast(0)
-        Timber.d("kChat releaseView count=%d", activeViewCount)
-        if (activeViewCount == 0) {
+        if (!preview) {
+            activeRideChatViewCount = (activeRideChatViewCount - 1).coerceAtLeast(0)
+        }
+        Timber.d(
+            "kChat releaseView count=%d ride=%d preview=%s total=%d",
+            activeViewCount,
+            activeRideChatViewCount,
+            preview,
+            activeSubscriberCount(),
+        )
+        if (activeSubscriberCount() == 0) {
             connectionJob?.cancel()
             currentSocket?.close("No active Karoo view")
             currentSocket = null
+            viewerPollJob?.cancel()
+            viewerPollJob = null
             publishState(ChatConnectionState.INACTIVE, "Chat page closed")
         }
+    }
+
+    fun acquireUnreadStream() {
+        activeUnreadStreamCount += 1
+        Timber.d("kChat acquireUnreadStream count=%d total=%d", activeUnreadStreamCount, activeSubscriberCount())
+        if (activeSubscriberCount() == 1) {
+            reconnectNow()
+        }
+    }
+
+    fun releaseUnreadStream() {
+        activeUnreadStreamCount = (activeUnreadStreamCount - 1).coerceAtLeast(0)
+        Timber.d("kChat releaseUnreadStream count=%d total=%d", activeUnreadStreamCount, activeSubscriberCount())
+        if (activeSubscriberCount() == 0) {
+            connectionJob?.cancel()
+            currentSocket?.close("No active Karoo subscriber")
+            currentSocket = null
+            viewerPollJob?.cancel()
+            viewerPollJob = null
+            publishState(ChatConnectionState.INACTIVE, "Chat field closed")
+        }
+    }
+
+    fun acquireViewerStream() {
+        activeViewerStreamCount += 1
+        Timber.d("kChat acquireViewerStream count=%d total=%d", activeViewerStreamCount, activeSubscriberCount())
+        if (activeSubscriberCount() == 1) {
+            reconnectNow()
+        } else {
+            latestChannelLogin?.let { channelLogin ->
+                startViewerPolling(channelLogin, settingsStore.currentSettings().clientId)
+            }
+        }
+    }
+
+    fun releaseViewerStream() {
+        activeViewerStreamCount = (activeViewerStreamCount - 1).coerceAtLeast(0)
+        Timber.d("kChat releaseViewerStream count=%d total=%d", activeViewerStreamCount, activeSubscriberCount())
+        if (activeViewerStreamCount == 0) {
+            viewerPollJob?.cancel()
+            viewerPollJob = null
+            viewerCountState.value = 0
+        }
+        if (activeSubscriberCount() == 0) {
+            connectionJob?.cancel()
+            currentSocket?.close("No active Karoo subscriber")
+            currentSocket = null
+            publishState(ChatConnectionState.INACTIVE, "Viewer field closed")
+        }
+    }
+
+    fun resetUnreadCount() {
+        if (unreadCountState.value == 0) {
+            return
+        }
+        Timber.d("kChat resetUnreadCount from=%d", unreadCountState.value)
+        updateUnreadCount(0)
+        publishState(state.value.connectionState, state.value.status)
     }
 
     fun reconnectNow() {
@@ -82,8 +170,10 @@ class TwitchChatRepository(
         connectionJob?.cancel()
         currentSocket?.close("Restarting Twitch chat connection")
         currentSocket = null
+        viewerPollJob?.cancel()
+        viewerPollJob = null
 
-        if (activeViewCount == 0) {
+        if (activeSubscriberCount() == 0) {
             refreshPrerequisiteState()
             return
         }
@@ -129,6 +219,9 @@ class TwitchChatRepository(
 
             latestAuthenticatedUser = viewer.displayName
             latestChannelLogin = channel.login
+            if (activeViewerStreamCount > 0) {
+                startViewerPolling(channel.login, settings.clientId)
+            }
 
             val client = TwitchEventSubClient(
                 okHttpClient = socketClient,
@@ -164,13 +257,13 @@ class TwitchChatRepository(
                 },
                 onDisconnected = { reason ->
                     Timber.w("kChat disconnected: %s", reason)
-                    if (activeViewCount > 0) {
+                    if (activeSubscriberCount() > 0) {
                         scheduleReconnect(reason)
                     }
                 },
                 onError = { error ->
                     Timber.e("kChat socket error: %s", error)
-                    if (activeViewCount > 0) {
+                    if (activeSubscriberCount() > 0) {
                         scheduleReconnect(error)
                     }
                 },
@@ -191,6 +284,8 @@ class TwitchChatRepository(
     private fun scheduleReconnect(reason: String) {
         Timber.w("kChat scheduleReconnect reason=%s attempt=%d", reason, reconnectAttempts + 1)
         currentSocket = null
+        viewerPollJob?.cancel()
+        viewerPollJob = null
         reconnectAttempts += 1
         val delayMillis = min(30_000L, 1_000L * (1 shl (reconnectAttempts - 1).coerceAtMost(4)))
         publishState(ChatConnectionState.ERROR, "$reason Retrying in ${delayMillis / 1000}s...")
@@ -211,6 +306,9 @@ class TwitchChatRepository(
                 }
                 messages.addLast(message)
                 persistMessages()
+                if (activeRideChatViewCount == 0) {
+                    updateUnreadCount(unreadCountState.value + 1)
+                }
                 true
             }
         }
@@ -240,6 +338,7 @@ class TwitchChatRepository(
             status = status,
             authenticatedUser = latestAuthenticatedUser,
             channelLogin = latestChannelLogin,
+            unreadCount = unreadCountState.value,
             messages = snapshotMessages(),
             sequence = sequence,
         )
@@ -252,6 +351,7 @@ class TwitchChatRepository(
                 ChatUiState(
                     connectionState = ChatConnectionState.NEEDS_CONFIGURATION,
                     status = "Save your Twitch client ID, then connect your account",
+                    unreadCount = unreadCountState.value,
                     messages = snapshotMessages(),
                     sequence = sequence,
                 )
@@ -260,6 +360,7 @@ class TwitchChatRepository(
                 ChatUiState(
                     connectionState = ChatConnectionState.AUTH_REQUIRED,
                     status = "Twitch is not connected yet",
+                    unreadCount = unreadCountState.value,
                     messages = snapshotMessages(),
                     sequence = sequence,
                 )
@@ -270,6 +371,7 @@ class TwitchChatRepository(
                     status = "Karoo chat page is ready",
                     authenticatedUser = latestAuthenticatedUser,
                     channelLogin = settings.channelLogin.ifBlank { latestChannelLogin },
+                    unreadCount = unreadCountState.value,
                     messages = snapshotMessages(),
                     sequence = sequence,
                 )
@@ -305,11 +407,51 @@ class TwitchChatRepository(
         prefs.edit().putString(KEY_CACHE, json.encodeToString(payload)).apply()
     }
 
+    private fun updateUnreadCount(count: Int) {
+        unreadCountState.value = count
+        prefs.edit().putInt(KEY_UNREAD_COUNT, count).apply()
+    }
+
+    private fun startViewerPolling(channelLogin: String, clientId: String) {
+        if (activeViewerStreamCount == 0 || clientId.isBlank()) {
+            viewerPollJob?.cancel()
+            viewerPollJob = null
+            viewerCountState.value = 0
+            return
+        }
+
+        viewerPollJob?.cancel()
+        viewerPollJob = scope.launch {
+            while (activeViewerStreamCount > 0) {
+                runCatching {
+                    val accessToken = authManager.requireFreshAccessToken(clientId)
+                    apiClient.getLiveViewerCount(clientId, accessToken, channelLogin)
+                }.onSuccess { viewerCount ->
+                    if (viewerCountState.value != viewerCount) {
+                        Timber.d("kChat viewerCount=%d channel=%s", viewerCount, channelLogin)
+                    }
+                    viewerCountState.value = viewerCount
+                }.onFailure { error ->
+                    Timber.w(error, "kChat viewer polling failed")
+                }
+                delay(VIEWER_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun loadUnreadCount(): Int {
+        return prefs.getInt(KEY_UNREAD_COUNT, 0)
+    }
+
+    private fun activeSubscriberCount(): Int = activeViewCount + activeUnreadStreamCount + activeViewerStreamCount
+
     private companion object {
         const val PREFS_NAME = "chat_cache"
         const val KEY_CACHE = "cached_messages"
+        const val KEY_UNREAD_COUNT = "unread_count"
         const val MAX_MESSAGES = 100
         const val CACHE_SIZE = 30
         const val VIEW_UPDATE_THROTTLE_MS = 1_000L
+        const val VIEWER_POLL_INTERVAL_MS = 30_000L
     }
 }
