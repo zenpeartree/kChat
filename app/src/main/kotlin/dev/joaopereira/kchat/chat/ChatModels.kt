@@ -25,6 +25,7 @@ data class ChatUiState(
     val status: String,
     val authenticatedUser: String? = null,
     val channelLogin: String? = null,
+    val viewerCount: Int = 0,
     val unreadCount: Int = 0,
     val messages: List<TwitchChatMessage> = emptyList(),
     val sequence: Long = 0,

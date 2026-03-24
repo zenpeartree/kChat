@@ -14,7 +14,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -28,22 +27,17 @@ class ChatPageDataType(
         val openSetup = PendingIntents.openSetup(context)
 
         container.chatRepository.acquireView(config.preview)
-        container.chatRepository.acquireViewerStream()
         emitter.onNext(UpdateGraphicConfig(showHeader = false))
         emitter.onNext(ShowCustomStreamState(null, null))
 
         scope.launch {
-            container.chatRepository.uiState
-                .combine(container.chatRepository.viewerCountFlow) { state, viewerCount ->
-                    state to viewerCount
-                }
-                .collect { (state, viewerCount) ->
+            container.chatRepository.uiState.collect { state ->
                 Timber.d(
                     "kChat view update preview=%s state=%s messages=%d viewers=%d",
                     config.preview,
                     state.connectionState,
                     state.messages.size,
-                    viewerCount,
+                    state.viewerCount,
                 )
                 val visibleMessages = state.messages
                     .take(8)
@@ -56,8 +50,8 @@ class ChatPageDataType(
                     )
                     setTextViewText(
                         R.id.chat_status,
-                        if (viewerCount > 0) {
-                            context.getString(R.string.chat_viewers_format, viewerCount)
+                        if (state.viewerCount > 0) {
+                            context.getString(R.string.chat_viewers_format, state.viewerCount)
                         } else {
                             context.getString(R.string.chat_viewers_offline)
                         },
@@ -73,7 +67,6 @@ class ChatPageDataType(
         emitter.setCancellable {
             scope.cancel()
             container.chatRepository.releaseView(config.preview)
-            container.chatRepository.releaseViewerStream()
         }
     }
 }
