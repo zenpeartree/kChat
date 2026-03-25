@@ -31,6 +31,9 @@
     <string name="empty_chat_messages">No chat messages yet. Open the app if you still need to configure Twitch.</string>
     <string name="chat_viewers_format">%1$d watching</string>
     <string name="chat_viewers_offline">Offline</string>
+    <string name="chat_viewers_checking">Checking viewers...</string>
+    <string name="chat_viewers_reconnect">Reconnect Twitch</string>
+    <string name="chat_viewers_unavailable">Viewer count unavailable</string>
     <string name="open_app_button">Open app</string>
     <string name="activation_title">Approve this device</string>
     <string name="activation_code_format">Code: %1$s</string>

@@ -5,6 +5,7 @@ import android.widget.RemoteViews
 import dev.joaopereira.kchat.PendingIntents
 import dev.joaopereira.kchat.R
 import dev.joaopereira.kchat.TwitchChatApplication
+import dev.joaopereira.kchat.chat.ViewerStatus
 import io.hammerhead.karooext.extension.DataTypeImpl
 import io.hammerhead.karooext.internal.ViewEmitter
 import io.hammerhead.karooext.models.ShowCustomStreamState
@@ -50,10 +51,12 @@ class ChatPageDataType(
                     )
                     setTextViewText(
                         R.id.chat_status,
-                        if (state.viewerCount > 0) {
-                            context.getString(R.string.chat_viewers_format, state.viewerCount)
-                        } else {
-                            context.getString(R.string.chat_viewers_offline)
+                        when (state.viewerStatus) {
+                            ViewerStatus.LIVE -> context.getString(R.string.chat_viewers_format, state.viewerCount)
+                            ViewerStatus.OFFLINE -> context.getString(R.string.chat_viewers_offline)
+                            ViewerStatus.AUTH_REQUIRED -> context.getString(R.string.chat_viewers_reconnect)
+                            ViewerStatus.UNAVAILABLE -> context.getString(R.string.chat_viewers_unavailable)
+                            ViewerStatus.UNKNOWN -> context.getString(R.string.chat_viewers_checking)
                         },
                     )
                     setTextViewText(R.id.chat_messages_text, visibleMessages)

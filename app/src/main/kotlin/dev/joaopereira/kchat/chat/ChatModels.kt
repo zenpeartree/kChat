@@ -13,6 +13,14 @@ enum class ChatConnectionState {
     ERROR,
 }
 
+enum class ViewerStatus {
+    UNKNOWN,
+    OFFLINE,
+    LIVE,
+    AUTH_REQUIRED,
+    UNAVAILABLE,
+}
+
 data class TwitchChatMessage(
     val id: String,
     val author: String,
@@ -26,6 +34,7 @@ data class ChatUiState(
     val authenticatedUser: String? = null,
     val channelLogin: String? = null,
     val viewerCount: Int = 0,
+    val viewerStatus: ViewerStatus = ViewerStatus.UNKNOWN,
     val unreadCount: Int = 0,
     val messages: List<TwitchChatMessage> = emptyList(),
     val sequence: Long = 0,
