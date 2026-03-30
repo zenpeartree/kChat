@@ -35,6 +35,9 @@ data class ChatUiState(
     val channelLogin: String? = null,
     val viewerCount: Int = 0,
     val viewerStatus: ViewerStatus = ViewerStatus.UNKNOWN,
+    val viewerQueriedChannel: String? = null,
+    val viewerCheckedAtMillis: Long = 0L,
+    val viewerDebugMessage: String? = null,
     val unreadCount: Int = 0,
     val messages: List<TwitchChatMessage> = emptyList(),
     val sequence: Long = 0,
@@ -61,6 +64,11 @@ data class TwitchUsersResponse(
 @Serializable
 data class TwitchStreamsResponse(
     val data: List<TwitchStream>,
+)
+
+data class TwitchViewerSnapshot(
+    val isLive: Boolean,
+    val viewerCount: Int,
 )
 
 @Serializable

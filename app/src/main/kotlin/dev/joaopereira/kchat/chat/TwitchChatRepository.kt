@@ -58,6 +58,9 @@ class TwitchChatRepository(
     private var reconnectAttempts = 0
     private var latestAuthenticatedUser: String? = null
     private var latestChannelLogin: String? = null
+    private var lastViewerQueriedChannel: String? = null
+    private var lastViewerCheckedAtMillis = 0L
+    private var lastViewerDebugMessage: String? = null
     private var sequence = 0L
     private var lastPublishedAtMillis = 0L
 
@@ -107,6 +110,7 @@ class TwitchChatRepository(
             viewerPollJob = null
             viewerCountState.value = 0
             viewerStatusState.value = ViewerStatus.UNKNOWN
+            clearViewerDiagnostics()
         }
         if (activeSubscriberCount() == 0) {
             connectionJob?.cancel()
@@ -132,6 +136,7 @@ class TwitchChatRepository(
             viewerPollJob = null
             viewerCountState.value = 0
             viewerStatusState.value = ViewerStatus.UNKNOWN
+            clearViewerDiagnostics()
         }
         if (activeSubscriberCount() == 0) {
             connectionJob?.cancel()
@@ -160,6 +165,7 @@ class TwitchChatRepository(
                 viewerPollJob = null
                 viewerCountState.value = 0
                 viewerStatusState.value = ViewerStatus.UNKNOWN
+                clearViewerDiagnostics()
             }
         }
         if (activeSubscriberCount() == 0) {
@@ -187,6 +193,7 @@ class TwitchChatRepository(
         viewerPollJob?.cancel()
         viewerPollJob = null
         viewerStatusState.value = ViewerStatus.UNKNOWN
+        clearViewerDiagnostics()
 
         if (activeSubscriberCount() == 0) {
             refreshPrerequisiteState()
@@ -353,6 +360,9 @@ class TwitchChatRepository(
             channelLogin = latestChannelLogin,
             viewerCount = viewerCountState.value,
             viewerStatus = viewerStatusState.value,
+            viewerQueriedChannel = lastViewerQueriedChannel,
+            viewerCheckedAtMillis = lastViewerCheckedAtMillis,
+            viewerDebugMessage = lastViewerDebugMessage,
             unreadCount = unreadCountState.value,
             messages = snapshotMessages(),
             sequence = sequence,
@@ -368,6 +378,9 @@ class TwitchChatRepository(
                     status = "Save your Twitch client ID, then connect your account",
                     viewerCount = viewerCountState.value,
                     viewerStatus = viewerStatusState.value,
+                    viewerQueriedChannel = lastViewerQueriedChannel,
+                    viewerCheckedAtMillis = lastViewerCheckedAtMillis,
+                    viewerDebugMessage = lastViewerDebugMessage,
                     unreadCount = unreadCountState.value,
                     messages = snapshotMessages(),
                     sequence = sequence,
@@ -379,6 +392,9 @@ class TwitchChatRepository(
                     status = "Twitch is not connected yet",
                     viewerCount = viewerCountState.value,
                     viewerStatus = viewerStatusState.value,
+                    viewerQueriedChannel = lastViewerQueriedChannel,
+                    viewerCheckedAtMillis = lastViewerCheckedAtMillis,
+                    viewerDebugMessage = lastViewerDebugMessage,
                     unreadCount = unreadCountState.value,
                     messages = snapshotMessages(),
                     sequence = sequence,
@@ -392,6 +408,9 @@ class TwitchChatRepository(
                     channelLogin = settings.channelLogin.ifBlank { latestChannelLogin },
                     viewerCount = viewerCountState.value,
                     viewerStatus = viewerStatusState.value,
+                    viewerQueriedChannel = lastViewerQueriedChannel,
+                    viewerCheckedAtMillis = lastViewerCheckedAtMillis,
+                    viewerDebugMessage = lastViewerDebugMessage,
                     unreadCount = unreadCountState.value,
                     messages = snapshotMessages(),
                     sequence = sequence,
@@ -439,25 +458,39 @@ class TwitchChatRepository(
             viewerPollJob = null
             viewerCountState.value = 0
             viewerStatusState.value = ViewerStatus.UNKNOWN
+            clearViewerDiagnostics()
             return
         }
 
         viewerPollJob?.cancel()
         viewerStatusState.value = ViewerStatus.UNKNOWN
+        lastViewerQueriedChannel = channelLogin
+        lastViewerDebugMessage = "waiting for first response"
         viewerPollJob = scope.launch {
             while (shouldPollViewerCount()) {
                 runCatching {
                     val accessToken = authManager.requireFreshAccessToken(clientId)
-                    apiClient.getLiveViewerCount(clientId, accessToken, channelLogin)
-                }.onSuccess { viewerCount ->
-                    val viewerStatus = if (viewerCount > 0) ViewerStatus.LIVE else ViewerStatus.OFFLINE
-                    if (viewerCountState.value != viewerCount) {
-                        Timber.d("kChat viewerCount=%d channel=%s", viewerCount, channelLogin)
+                    apiClient.getViewerSnapshot(clientId, accessToken, channelLogin)
+                }.onSuccess { snapshot ->
+                    val viewerStatus = if (snapshot.isLive) ViewerStatus.LIVE else ViewerStatus.OFFLINE
+                    lastViewerCheckedAtMillis = System.currentTimeMillis()
+                    lastViewerDebugMessage = if (snapshot.isLive) {
+                        "live, ${snapshot.viewerCount} watching"
+                    } else {
+                        "no stream"
+                    }
+                    if (viewerCountState.value != snapshot.viewerCount || viewerStatusState.value != viewerStatus) {
+                        Timber.d(
+                            "kChat viewerCount=%d live=%s channel=%s",
+                            snapshot.viewerCount,
+                            snapshot.isLive,
+                            channelLogin,
+                        )
                     }
                     val statusChanged = viewerStatusState.value != viewerStatus
-                    viewerCountState.value = viewerCount
+                    viewerCountState.value = snapshot.viewerCount
                     viewerStatusState.value = viewerStatus
-                    if ((activeViewCount > 0) && (statusChanged || state.value.viewerCount != viewerCount)) {
+                    if ((activeViewCount > 0) && (statusChanged || state.value.viewerCount != snapshot.viewerCount)) {
                         publishState(state.value.connectionState, state.value.status)
                     }
                 }.onFailure { error ->
@@ -465,6 +498,9 @@ class TwitchChatRepository(
                     viewerCountState.value = 0
                     val viewerStatus = classifyViewerFailure(error)
                     val statusChanged = viewerStatusState.value != viewerStatus
+                    lastViewerCheckedAtMillis = System.currentTimeMillis()
+                    lastViewerDebugMessage = error.message?.lineSequence()?.firstOrNull()?.take(48)
+                        ?: "viewer poll failed"
                     viewerStatusState.value = viewerStatus
                     if (activeViewCount > 0 && statusChanged) {
                         publishState(state.value.connectionState, state.value.status)
@@ -483,6 +519,12 @@ class TwitchChatRepository(
         latestChannelLogin?.let { channelLogin ->
             startViewerPolling(channelLogin, settingsStore.currentSettings().clientId)
         }
+    }
+
+    private fun clearViewerDiagnostics() {
+        lastViewerQueriedChannel = null
+        lastViewerCheckedAtMillis = 0L
+        lastViewerDebugMessage = null
     }
 
     private fun classifyViewerFailure(error: Throwable): ViewerStatus {

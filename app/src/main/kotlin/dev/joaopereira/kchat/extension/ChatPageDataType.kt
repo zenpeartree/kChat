@@ -44,21 +44,20 @@ class ChatPageDataType(
                     .take(8)
                     .joinToString(separator = "\n\n") { "${it.author}: ${it.text}" }
                     .ifBlank { context.getString(R.string.empty_chat_messages) }
+                val viewerLabel = when (state.viewerStatus) {
+                    ViewerStatus.LIVE -> context.getString(R.string.chat_viewers_count, state.viewerCount)
+                    ViewerStatus.OFFLINE,
+                    ViewerStatus.AUTH_REQUIRED,
+                    ViewerStatus.UNAVAILABLE,
+                    ViewerStatus.UNKNOWN,
+                    -> context.getString(R.string.chat_viewers_offline)
+                }
                 val views = RemoteViews(context.packageName, R.layout.remoteviews_chat_page).apply {
                     setTextViewText(
                         R.id.chat_title,
                         state.channelLogin?.let { "#$it" } ?: context.getString(R.string.live_chat_title),
                     )
-                    setTextViewText(
-                        R.id.chat_status,
-                        when (state.viewerStatus) {
-                            ViewerStatus.LIVE -> context.getString(R.string.chat_viewers_format, state.viewerCount)
-                            ViewerStatus.OFFLINE -> context.getString(R.string.chat_viewers_offline)
-                            ViewerStatus.AUTH_REQUIRED -> context.getString(R.string.chat_viewers_reconnect)
-                            ViewerStatus.UNAVAILABLE -> context.getString(R.string.chat_viewers_unavailable)
-                            ViewerStatus.UNKNOWN -> context.getString(R.string.chat_viewers_checking)
-                        },
-                    )
+                    setTextViewText(R.id.chat_status, viewerLabel)
                     setTextViewText(R.id.chat_messages_text, visibleMessages)
                     setOnClickPendingIntent(R.id.chat_header, openSetup)
                     setOnClickPendingIntent(R.id.open_app_button, openSetup)
